@@ -19,8 +19,8 @@ class BaseMailClient {
   awaitable_result<void> asyncWriteCommand(const std::string& command);
   awaitable_result<std::vector<std::string>> asyncReadResponse();
 
- private:
-  std::shared_ptr<SSLConnection> ssl_connection_;
+ protected:
+  std::shared_ptr<SSLConnection> connection_;
 };
 
 }  // namespace mailclient::net

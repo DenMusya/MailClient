@@ -5,4 +5,7 @@ target_include_directories(SMTPClient PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(SMTPClient 
 boost_project
-BaseMailClient)
+BaseMailClient
+CommandQueue
+Base64Encode
+)

@@ -17,4 +17,6 @@ target_link_libraries(boost_project INTERFACE
   ${Boost_LIBRARIES}
 )
 
+add_definitions(-DPROJECT_ROOT="${CMAKE_SOURCE_DIR}")
+
 add_subdirectory(src)
