@@ -1,4 +1,6 @@
 add_subdirectory(Logger)
+add_subdirectory(Response)
+add_subdirectory(Error)
 add_subdirectory(SSLConnection)
 add_subdirectory(Base64Encode)
 add_subdirectory(CommandQueue)

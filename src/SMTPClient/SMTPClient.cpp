@@ -1,6 +1,9 @@
 #include "SMTPClient.hpp"
 
 #include "Base64Encode.hpp"
+#include "NetworkError.hpp"
+#include "SMTPError.hpp"
+#include "SMTPResponse.hpp"
 
 using namespace mailclient::net;
 
@@ -10,63 +13,67 @@ std::shared_ptr<SMTPClient> SMTPClient::create(boost::asio::io_context& io) {
   return std::shared_ptr<SMTPClient>(new SMTPClient(io));
 }
 
-awaitable_result<void> SMTPClient::login(const std::string& username, const std::string& password) {
-  auto res = co_await connection_->asyncWrite("EHLO localhost\r\n");
-  if (!res) co_return std::unexpected(res.error());
-  if (auto tmp = co_await asyncReadResponse(); !tmp) co_return std::unexpected(tmp.error());
+awaitable_result<SMTPResponse, NetworkError> SMTPClient::sendCommand(
+    const std::string& command) {
+  auto res = co_await connection_->asyncWrite(command);
+  if (!res) co_return std::unexpected(NetworkError(res.error()));
 
-  res = co_await connection_->asyncWrite("AUTH LOGIN\r\n");
-  if (!res) co_return std::unexpected(res.error());
+  SMTPResponse response;
 
-  auto line = co_await connection_->asyncReadLine();
-  if (!line) co_return std::unexpected(line.error());
-  if (line.value().substr(0, 3) != "334")
-    co_return std::unexpected(boost::system::error_code{1, boost::system::generic_category()});
+  while (true) {
+    auto line = co_await connection_->asyncReadLine();
+    if (!line) co_return std::unexpected(NetworkError(line.error()));
 
-  std::string encodedUser = base64Encode(username);
-  res = co_await connection_->asyncWrite(encodedUser + "\r\n");
-  if (!res) co_return std::unexpected(res.error());
+    response.addLine(line.value());
+    if (line.value().size() >= 4 && line.value()[3] == ' ') {
+      break;
+    }
+  }
 
-  line = co_await connection_->asyncReadLine();
-  if (!line) co_return std::unexpected(line.error());
-  if (line.value().substr(0, 3) != "334")
-    co_return std::unexpected(boost::system::error_code{2, boost::system::generic_category()});
-
-  std::string encodedPass = base64Encode(password);
-  res = co_await connection_->asyncWrite(encodedPass + "\r\n");
-  if (!res) co_return std::unexpected(res.error());
-
-  line = co_await connection_->asyncReadLine();
-  if (!line) co_return std::unexpected(line.error());
-  if (line.value().substr(0, 3) != "235")
-    co_return std::unexpected(boost::system::error_code{3, boost::system::generic_category()});
+  co_return response;
 }
 
-awaitable_result<void> SMTPClient::sendMail(const std::string& from, const std::string& to,
-                                            const std::string& subject, const std::string& body) {
-  auto res = co_await connection_->asyncWrite("MAIL FROM:<" + from + ">\r\n");
-  if (!res) co_return std::unexpected(res.error());
+awaitable_result<void, SMTPError> SMTPClient::login(
+    const std::string& username, const std::string& password) {
+  auto res = co_await sendCommand("EHLO localhost\r\n");
+  if (!res) co_return std::unexpected(SMTPError(res.error()));
 
-  auto line = co_await connection_->asyncReadLine();
-  if (!line) co_return std::unexpected(line.error());
-  if (line.value().substr(0, 3) != "250")
-    co_return std::unexpected(boost::system::error_code{1, boost::system::generic_category()});
+  res = co_await sendCommand("AUTH LOGIN\r\n");
+  if (!res) co_return std::unexpected(SMTPError(res.error()));
 
-  res = co_await connection_->asyncWrite("RCPT TO:<" + to + ">\r\n");
-  if (!res) co_return std::unexpected(res.error());
+  if (!res->is(SMTPCode::AuthContinue))
+    co_return std::unexpected(SMTPError(*res));
 
-  line = co_await connection_->asyncReadLine();
-  if (!line) co_return std::unexpected(line.error());
-  if (line.value().substr(0, 3) != "250")
-    co_return std::unexpected(boost::system::error_code{2, boost::system::generic_category()});
+  std::string encodedUser = base64Encode(username);
+  res = co_await sendCommand(encodedUser + "\r\n");
+  if (!res) co_return std::unexpected(SMTPError(res.error()));
+  if (!res->is(SMTPCode::AuthContinue))
+    co_return std::unexpected(SMTPError(*res));
 
-  res = co_await connection_->asyncWrite("DATA\r\n");
-  if (!res) co_return std::unexpected(res.error());
+  std::string encodedPass = base64Encode(password);
+  res = co_await sendCommand(encodedPass + "\r\n");
+  if (!res) co_return std::unexpected(SMTPError(res.error()));
+  if (!res->is(SMTPCode::AuthSuccessful))
+    co_return std::unexpected(SMTPError(*res));
 
-  line = co_await connection_->asyncReadLine();
-  if (!line) co_return std::unexpected(line.error());
-  if (line.value().substr(0, 3) != "354")
-    co_return std::unexpected(boost::system::error_code{3, boost::system::generic_category()});
+  co_return std::expected<void, SMTPError>();
+}
+
+awaitable_result<void, SMTPError> SMTPClient::sendMail(
+    const std::string& from, const std::string& to, const std::string& subject,
+    const std::string& body) {
+  auto res = co_await sendCommand("MAIL FROM:<" + from + ">\r\n");
+  if (!res) co_return std::unexpected(SMTPError(res.error()));
+  if (!res->is(SMTPCode::Ok)) co_return std::unexpected(SMTPError(*res));
+
+  res = co_await sendCommand("RCPT TO:<" + to + ">\r\n");
+  if (!res) co_return std::unexpected(SMTPError(res.error()));
+  if (!res->is(SMTPCode::Ok)) co_return std::unexpected(SMTPError(*res));
+
+  res = co_await sendCommand("DATA\r\n");
+  if (!res) co_return std::unexpected(SMTPError(res.error()));
+  if (!res->is(SMTPCode::StartMailInput))
+    co_return std::unexpected(SMTPError(*res));
 
   std::stringstream ss;
   ss << "Subject: " << subject << "\r\n";
@@ -75,11 +82,10 @@ awaitable_result<void> SMTPClient::sendMail(const std::string& from, const std::
   ss << "\r\n";
   ss << body << "\r\n.\r\n";
 
-  res = co_await connection_->asyncWrite(ss.str());
-  if (!res) co_return std::unexpected(res.error());
+  res = co_await sendCommand(ss.str());
+  if (!res) co_return std::unexpected(SMTPError(res.error()));
 
-  line = co_await connection_->asyncReadLine();
-  if (!line) co_return std::unexpected(line.error());
-  if (line.value().substr(0, 3) != "250")
-    co_return std::unexpected(boost::system::error_code{4, boost::system::generic_category()});
+  if (!res->is(SMTPCode::Ok)) co_return std::unexpected(SMTPError(*res));
+
+  co_return std::expected<void, SMTPError>();
 }

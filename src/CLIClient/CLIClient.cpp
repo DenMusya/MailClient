@@ -23,23 +23,26 @@ std::unordered_map<std::string, std::string> readEnv(const std::string& path) {
   return env;
 }
 
-std::shared_ptr<CLIClient> CLIClient::create(std::shared_ptr<net::SMTPClient> smtp_client) {
+std::shared_ptr<CLIClient> CLIClient::create(
+    std::shared_ptr<net::SMTPClient> smtp_client) {
   return std::shared_ptr<CLIClient>(new CLIClient(smtp_client));
 }
 
-CLIClient::CLIClient(std::shared_ptr<net::SMTPClient> smtp_client) : smtp_client_(smtp_client) {}
+CLIClient::CLIClient(std::shared_ptr<net::SMTPClient> smtp_client)
+    : smtp_client_(smtp_client) {}
 
 boost::asio::awaitable<void> CLIClient::run() {
   auto env = readEnv(std::string(PROJECT_ROOT) + "/.env");
   while (true) {
-    std::cout << "\nCommands:\n[1] Connect\n[2] Send Mail\n[3] Auth\n[4] Quit\nChoose: ";
+    std::cout << "\nCommands:\n[1] Connect\n[2] Send Mail\n[3] Auth\n[4] "
+                 "Quit\nChoose: ";
     std::string cmd;
     std::getline(std::cin, cmd);
 
     if (cmd == "1") {
       std::string host = env["SMTP_HOST"], port = env["SMTP_PORT"];
-      auto res = co_await smtp_client_->asyncConnect(host, port);
-      if (!res) LOG(res.error());
+      auto res = co_await smtp_client_->connect(host, port);
+      if (!res) LOG(res.error().what());
     } else if (cmd == "2") {
       std::string to, body, topic;
       std::cout << "To: ";
@@ -48,12 +51,14 @@ boost::asio::awaitable<void> CLIClient::run() {
       std::getline(std::cin, topic);
       std::cout << "Body: ";
       std::getline(std::cin, body);
-      auto res = co_await smtp_client_->sendMail(env["EMAIL_ADDRESS"], to, topic, body);
-      if (!res) LOG(res.error());
+      auto res = co_await smtp_client_->sendMail(env["EMAIL_ADDRESS"], to,
+                                                 topic, body);
+      if (!res) LOG(res.error().what());
     } else if (cmd == "3") {
-      std::string email = env["EMAIL_ADDRESS"], password = env["EMAIL_PASSWORD"];
+      std::string email = env["EMAIL_ADDRESS"],
+                  password = env["EMAIL_PASSWORD"];
       auto res = co_await smtp_client_->login(email, password);
-      if (!res) LOG(res.error());
+      if (!res) LOG(res.error().what());
     } else if (cmd == "4") {
       std::cout << "Exiting CLI.\n";
       break;
@@ -61,4 +66,6 @@ boost::asio::awaitable<void> CLIClient::run() {
       std::cout << "Unknown command.\n";
     }
   }
+
+  co_return;
 }
