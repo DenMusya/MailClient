@@ -5,7 +5,6 @@
 #include <boost/asio/ssl.hpp>
 #include <string>
 
-#include "NetworkError.hpp"
 #include "SSLConnection.hpp"
 
 namespace mailclient::net {
@@ -14,11 +13,9 @@ template <typename Response>
 class BaseMailClient {
  public:
   BaseMailClient(boost::asio::io_context& io);
-  awaitable_result<void, NetworkError> connect(const std::string& host,
-                                               const std::string& port);
-  // awaitable_result<void> asyncWriteCommand(const std::string& command);
-  // awaitable_result<std::vector<std::string>> asyncReadResponse();
-  virtual awaitable_result<Response, NetworkError> sendCommand(
+  awaitable_result<void> connect(const std::string& host,
+                                 const std::string& port);
+  virtual awaitable_result<Response> sendCommand(
       const std::string& command) = 0;
 
   virtual ~BaseMailClient() = 0;

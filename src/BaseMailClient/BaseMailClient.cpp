@@ -1,7 +1,6 @@
 #include "BaseMailClient.hpp"
 
 #include "IMAPResponse.hpp"
-#include "NetworkError.hpp"
 #include "SMTPResponse.hpp"
 
 using namespace mailclient::net;
@@ -11,7 +10,7 @@ BaseMailClient<Response>::BaseMailClient(boost::asio::io_context& io)
     : connection_(SSLConnection::create(io)) {}
 
 template <typename Response>
-awaitable_result<void, NetworkError> BaseMailClient<Response>::connect(
+awaitable_result<void> BaseMailClient<Response>::connect(
     const std::string& host, const std::string& port) {
   auto res = co_await connection_->asyncConnect(host, port);
   if (!res) co_return std::unexpected(res.error());

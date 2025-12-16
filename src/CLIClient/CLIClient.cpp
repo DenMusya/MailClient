@@ -35,7 +35,7 @@ boost::asio::awaitable<void> CLIClient::run() {
   auto env = readEnv(std::string(PROJECT_ROOT) + "/.env");
   while (true) {
     std::cout << "\nCommands:\n[1] Connect\n[2] Send Mail\n[3] Auth\n[4] "
-                 "Quit\nChoose: ";
+                 "Quit\n[5] Disconnect\nChoose: ";
     std::string cmd;
     std::getline(std::cin, cmd);
 
@@ -60,8 +60,19 @@ boost::asio::awaitable<void> CLIClient::run() {
       auto res = co_await smtp_client_->login(email, password);
       if (!res) LOG(res.error().what());
     } else if (cmd == "4") {
+      auto res = co_await smtp_client_->quit();
+      if (!res)
+        LOG(res.error().what());
+      else
+        std::cout << "Вы успешно вышли из сессии почты\n";
       std::cout << "Exiting CLI.\n";
       break;
+    } else if (cmd == "5") {
+      auto res = co_await smtp_client_->quit();
+      if (!res)
+        LOG(res.error().what());
+      else
+        std::cout << "Вы успешно вышли из сессии почты\n";
     } else {
       std::cout << "Unknown command.\n";
     }

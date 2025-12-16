@@ -7,12 +7,12 @@
 #include <expected>
 #include <memory>
 
-#include "NetworkError.hpp"
+#include "Error.hpp"
 
 namespace mailclient::net {
 
-template <typename T, typename E>
-using awaitable_result = boost::asio::awaitable<std::expected<T, E>>;
+template <typename T>
+using awaitable_result = boost::asio::awaitable<std::expected<T, Error>>;
 
 using boost::asio::ip::tcp;
 namespace ssl = boost::asio::ssl;
@@ -21,10 +21,11 @@ class SSLConnection : public std::enable_shared_from_this<SSLConnection> {
  public:
   static std::shared_ptr<SSLConnection> create(boost::asio::io_context& io);
 
-  awaitable_result<void, NetworkError> asyncConnect(const std::string& host,
-                                                    const std::string& port);
-  awaitable_result<void, NetworkError> asyncWrite(const std::string& msg);
-  awaitable_result<std::string, NetworkError> asyncReadLine();
+  awaitable_result<void> asyncConnect(const std::string& host,
+                                      const std::string& port);
+  awaitable_result<void> asyncWrite(const std::string& msg);
+  awaitable_result<std::string> asyncReadLine();
+  awaitable_result<void> asyncClose();
 
  private:
   SSLConnection(boost::asio::io_context& io);

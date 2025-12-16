@@ -1,8 +1,10 @@
 #include "SSLConnection.hpp"
 
+#include <boost/asio/redirect_error.hpp>
 #include <boost/asio/use_awaitable.hpp>
+#include <expected>
 
-#include "NetworkError.hpp"
+#include "Error.hpp"
 
 using namespace mailclient::net;
 
@@ -19,47 +21,68 @@ SSLConnection::SSLConnection(boost::asio::io_context& io)
   ctx_.set_default_verify_paths();
 }
 
-awaitable_result<void, NetworkError> SSLConnection::asyncConnect(
-    const std::string& host, const std::string& port) {
-  try {
-    auto results = co_await resolver_.async_resolve(host, port,
-                                                    boost::asio::use_awaitable);
-    co_await boost::asio::async_connect(stream_.lowest_layer(), results,
-                                        boost::asio::use_awaitable);
-    stream_.set_verify_mode(ssl::verify_peer);
-    stream_.set_verify_callback(ssl::host_name_verification(host));
+awaitable_result<void> SSLConnection::asyncConnect(const std::string& host,
+                                                   const std::string& port) {
+  auto ex = resolver_.get_executor();
+  stream_ = ssl::stream<tcp::socket>(ex, ctx_);
 
-    co_await stream_.async_handshake(ssl::stream_base::client,
-                                     boost::asio::use_awaitable);
+  boost::system::error_code ec;
+  auto results = co_await resolver_.async_resolve(
+      host, port, boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
-    co_return std::expected<void, NetworkError>{};
-  } catch (const boost::system::system_error& err) {
-    co_return std::unexpected(NetworkError(err.code()));
-  }
+  if (ec) co_return std::unexpected(Error(ec));
+
+  co_await boost::asio::async_connect(
+      stream_.lowest_layer(), results,
+      boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+  if (ec) co_return std::unexpected(Error(ec));
+
+  stream_.set_verify_mode(ssl::verify_peer);
+  stream_.set_verify_callback(ssl::host_name_verification(host));
+
+  co_await stream_.async_handshake(
+      ssl::stream_base::client,
+      boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+  if (ec) co_return std::unexpected(Error(ec));
+  co_return std::expected<void, Error>{};
 }
 
-awaitable_result<void, NetworkError> SSLConnection::asyncWrite(
-    const std::string& msg) {
-  try {
-    co_await boost::asio::async_write(stream_, boost::asio::buffer(msg),
-                                      boost::asio::use_awaitable);
-    co_return std::expected<void, NetworkError>{};
-  } catch (const boost::system::system_error& err) {
-    co_return std::unexpected(NetworkError(err.code()));
-  }
+awaitable_result<void> SSLConnection::asyncWrite(const std::string& msg) {
+  boost::system::error_code ec;
+  co_await boost::asio::async_write(
+      stream_, boost::asio::buffer(msg),
+      boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+  if (ec) co_return std::unexpected(Error(ec));
+  co_return std::expected<void, Error>{};
 }
 
-awaitable_result<std::string, NetworkError> SSLConnection::asyncReadLine() {
-  try {
-    co_await boost::asio::async_read_until(stream_, buffer_, "\r\n",
-                                           boost::asio::use_awaitable);
-    std::istream is(&buffer_);
-    std::string line;
-    std::getline(is, line);
+awaitable_result<std::string> SSLConnection::asyncReadLine() {
+  boost::system::error_code ec;
 
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    co_return line;
-  } catch (const boost::system::system_error& err) {
-    co_return std::unexpected(NetworkError(err.code()));
-  }
+  co_await boost::asio::async_read_until(
+      stream_, buffer_, "\r\n",
+      boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+
+  if (ec) co_return std::unexpected(Error(ec));
+
+  std::istream is(&buffer_);
+  std::string line;
+  std::getline(is, line);
+
+  if (!line.empty() && line.back() == '\r') line.pop_back();
+  co_return line;
+}
+
+awaitable_result<void> SSLConnection::asyncClose() {
+  boost::system::error_code ec;
+
+  co_await stream_.async_shutdown(
+      boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+  if (ec) co_return std::unexpected(Error(ec));
+
+  stream_.lowest_layer().close();
+
+  co_return std::expected<void, Error>();
 }
