@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 4.1)
+project(MailClient)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+cmake_policy(SET CMP0167 NEW)
+
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_EXPERIMENTAL_CXX_MODULE_CMAKE_API OFF)
+
+find_package(Boost 1.89 REQUIRED)
+find_package(OpenSSL REQUIRED)
+
+add_library(boost_project INTERFACE)
+target_include_directories(boost_project INTERFACE ${Boost_INCLUDE_DIRS})
+target_link_libraries(boost_project INTERFACE 
+  OpenSSL::SSL
+  OpenSSL::Crypto
+  ${Boost_LIBRARIES}
+)
+
+add_definitions(-DPROJECT_ROOT="${CMAKE_SOURCE_DIR}")
+
+add_subdirectory(src)
