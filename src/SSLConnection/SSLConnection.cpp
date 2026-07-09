@@ -1,5 +1,6 @@
 #include "SSLConnection.hpp"
 
+#include <boost/asio/read.hpp>
 #include <boost/asio/redirect_error.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <expected>
@@ -73,6 +74,22 @@ awaitable_result<std::string> SSLConnection::asyncReadLine() {
 
   if (!line.empty() && line.back() == '\r') line.pop_back();
   co_return line;
+}
+
+awaitable_result<std::string> SSLConnection::asyncReadN(std::size_t n) {
+  boost::system::error_code ec;
+
+  if (buffer_.size() < n) {
+    co_await boost::asio::async_read(
+        stream_, buffer_, boost::asio::transfer_at_least(n - buffer_.size()),
+        boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+    if (ec) co_return std::unexpected(Error(ec));
+  }
+
+  std::string data(n, '\0');
+  std::istream is(&buffer_);
+  is.read(data.data(), static_cast<std::streamsize>(n));
+  co_return data;
 }
 
 awaitable_result<void> SSLConnection::asyncClose() {

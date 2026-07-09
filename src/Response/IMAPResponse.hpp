@@ -1,9 +1,8 @@
 #ifndef IMAPRESPONSE
 #define IMAPRESPONSE
 
+#include <string>
 #include <vector>
-
-#include "string"
 
 namespace mailclient::net {
 
@@ -40,8 +39,13 @@ struct IMAPResponse {
   std::string tag;
   std::string raw;
 
-  IMAPStatus status;
-  IMAPCommandType command;
+  std::vector<std::string> lines;     // every line received for this response
+  std::vector<std::string> literals;  // {n} literal blocks in arrival order
+
+  IMAPStatus status = IMAPStatus::BAD;
+  IMAPCommandType command = IMAPCommandType::Unknown;
+
+  bool ok() const { return status == IMAPStatus::OK; }
 };
 
 struct EventMessage {

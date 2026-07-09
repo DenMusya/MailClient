@@ -25,6 +25,7 @@ class SSLConnection : public std::enable_shared_from_this<SSLConnection> {
                                       const std::string& port);
   awaitable_result<void> asyncWrite(const std::string& msg);
   awaitable_result<std::string> asyncReadLine();
+  awaitable_result<std::string> asyncReadN(std::size_t n);
   awaitable_result<void> asyncClose();
 
  private:

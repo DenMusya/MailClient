@@ -18,7 +18,7 @@ awaitable_result<void> BaseMailClient<Response>::connect(
   auto res2 = co_await connection_->asyncReadLine();
   if (!res2) co_return std::unexpected(res2.error());
 
-  co_return std::expected<void, boost::system::error_code>();
+  co_return std::expected<void, Error>();
 }
 
 template <typename Response>
